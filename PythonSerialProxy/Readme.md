@@ -15,6 +15,7 @@ This Python script reads data from an Arduino device via serial communication an
 - Python 3.x
 - `serial` library (can be installed via `pip install pyserial`)
 - `firebase-admin` library (can be installed via `pip install firebase-admin`)
+- `gemini` library (can be installed via `pip install google-generativeai`)
 - Access to Firebase Realtime Database
 - Arduino device connected to the computer via USB
 

@@ -37,6 +37,7 @@
 
 #define DEBOUNCE_DELAY 500  // Debounce delay in milliseconds
 #define LCD_UPDATE_INTERVAL 500 // Update LCD every 100 milliseconds
+#define SERIAL_UPDATE_INTERVAL 10000
 
 byte sunIcon[8] = {
   0b00000,
@@ -100,6 +101,7 @@ TrafficLightState currentState;
 TrafficLightState lastState; // Variable to store the last state
 unsigned long previousMillis = 0;
 unsigned long previousLCDMillis = 0;
+unsigned long previousSerialMillis = 0;
 unsigned long stateDuration = 0;
 bool blinkingState = false;
 bool pedestrianDebounce = false;
@@ -274,7 +276,11 @@ void updateTrafficLights(unsigned long currentMillis) {
   }
 }
 
-void sendJSON() {
+void sendJSON(unsigned long currentMillis) {
+  if (currentMillis - previousSerialMillis < SERIAL_UPDATE_INTERVAL) return;
+
+  previousSerialMillis = currentMillis;
+  
   if (currentState != lastState) { // Check if the state has changed
     lastState = currentState; // Update the last state
 
@@ -343,5 +349,5 @@ void loop() {
 
   updateLCD(currentMillis);
 
-  sendJSON();
+  sendJSON(currentMillis);
 }
