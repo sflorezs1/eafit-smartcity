@@ -1,2 +1,3 @@
 venv/
 PythonSerialProxy/service_account.json
+PythonSerialProxy/.env

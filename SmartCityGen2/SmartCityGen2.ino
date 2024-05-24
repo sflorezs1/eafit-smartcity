@@ -1,11 +1,11 @@
 #include <LiquidCrystal_I2C.h>
-
 #include <Wire.h>
-
 #include "TrafficLight.h"
 #include "LightSensor.h"
 #include "InfraredSensor.h"
+#include "Co2Sensor.h"
 #include "Button.h"
+#include <ArduinoJson.h>
 
 #define LDR1 0  // LDR Light sensor from traffic light 1 connected in pin A0
 #define LDR2 1  // LDR Light sensor from traffic light 2 connected in pin A1
@@ -17,6 +17,7 @@
 #define LR2 25  // Luz roja de semáforo 2 conectada en pin 25
 #define LG2 27  // Luz verde de semáforo 2 conectada en pin 27
 #define LY2 26  // Luz amarilla de semáforo 2 conectada en pin 26
+#define CO2 2   // CO2 sensor connected in pin A3
 
 #define CNY1 35  // Infrared sensor 1 in traffic light 1 connected in pin 35
 #define CNY2 34  // Infrared sensor 2 in traffic light 1 connected in pin 34
@@ -25,17 +26,23 @@
 #define CNY5 31  // Infrared sensor 5 in traffic light 2 connected in pin 31
 #define CNY6 30  // Infrared sensor 6 in traffic light 2 connected in pin 30
 
-#define GREEN_TIME1 3500       // Green time for light 1
-#define YELLOW_TIME1 500       // Yellow time for light 1
-#define RED_TIME1 4000         // Red time for light 1
-#define GREEN_TIME2 3500       // Green time for light 2
-#define YELLOW_TIME2 500       // Yellow time for light 2
-#define RED_TIME2 4000         // Red time for light 2
-#define BLINKING_DURATION 500  // Blinking duration
+unsigned long GREEN_TIME1 = 3500;       // Green time for light 1
+unsigned long YELLOW_TIME1 = 500;       // Yellow time for light 1
+unsigned long RED_TIME1 = 4000;       // Red time for light 1
+unsigned long GREEN_TIME2 = 3500;       // Green time for light 2
+unsigned long YELLOW_TIME2 = 500;       // Yellow time for light 2
+unsigned long RED_TIME2 = 4000;       // Red time for light 2
+unsigned long BLINKING_DURATION = 500;  // Blinking duration
+unsigned long PEDESTRIAN_REDUCTION = 3500;
+float DIFF1_MULT = 1.1;
+float DIFF2_MULT = 1.25;
+float DIFF3_MULT = 1.5;
+
 #define PEDESTRIAN_DEBOUNCE 2000
 
-#define DEBOUNCE_DELAY 500  // Debounce delay in milliseconds
-#define LCD_UPDATE_INTERVAL 500 // Update LCD every 100 milliseconds
+#define DEBOUNCE_DELAY 500       // Debounce delay in milliseconds
+#define LCD_UPDATE_INTERVAL 500  // Update LCD every 100 milliseconds
+#define SERIAL_UPDATE_INTERVAL 10000
 
 byte sunIcon[8] = {
   0b00000,
@@ -60,7 +67,7 @@ byte moonIcon[8] = {
 };
 
 // Initialize the LCD
-LiquidCrystal_I2C lcd(0x27, 16, 4); // Set the LCD address to 0x27 for a 16 chars and 4 line display
+LiquidCrystal_I2C lcd(0x27, 16, 4);  // Set the LCD address to 0x27 for a 16 chars and 4 line display
 
 LightSensor ls1(LDR1);
 LightSensor ls2(LDR2);
@@ -81,6 +88,12 @@ Button button2(P1, DEBOUNCE_DELAY);
 TrafficLight light1(LR1, LY1, LG1, ls1, issl1, button1);  // Semáforo 1
 TrafficLight light2(LR2, LY2, LG2, ls2, issl2, button2);  // Semáforo 2
 
+// Valores constantes proporcionados
+const float DC_GAIN = 8.5;
+const float ZERO_POINT_VOLTAGE = 0.265;
+const float REACTION_VOLTAGE = 0.059;
+Co2Sensor co2Sensor(CO2, ZERO_POINT_VOLTAGE, REACTION_VOLTAGE, DC_GAIN);
+
 enum TrafficLightState {
   GREEN1_RED2,
   YELLOW1_RED2,
@@ -90,8 +103,10 @@ enum TrafficLightState {
 };
 
 TrafficLightState currentState;
+TrafficLightState lastState;  // Variable to store the last state
 unsigned long previousMillis = 0;
 unsigned long previousLCDMillis = 0;
+unsigned long previousSerialMillis = 0;
 unsigned long stateDuration = 0;
 bool blinkingState = false;
 bool pedestrianDebounce = false;
@@ -133,6 +148,11 @@ void updateLCD(unsigned long currentMillis) {
   lcd.write(light1.isNight() ? byte(1) : byte(0));
   lcd.print(" | ");
   lcd.write(light2.isNight() ? byte(1) : byte(0));
+  lcd.setCursor(0, 3);
+  lcd.print("co2: ");
+  float co2 = co2Sensor.GetValue();
+  lcd.setCursor(9, 3);
+  lcd.print(co2);
 }
 
 void updateTimingWeights(unsigned long currentMillis) {
@@ -147,24 +167,26 @@ void updateTimingWeights(unsigned long currentMillis) {
   unsigned long greenTime2 = GREEN_TIME2;
 
   if (vehicleCount1 == 0 && vehicleCount2 > 0) {
-    greenTime2 = GREEN_TIME2 * 2;  // Double the green time if no vehicles in light1
+    greenTime2 = GREEN_TIME2 * DIFF3_MULT; 
+    greenTime1 = GREEN_TIME2 * 2 - DIFF3_MULT; 
   } else if (vehicleCount2 == 0 && vehicleCount1 > 0) {
-    greenTime1 = GREEN_TIME1 * 2;  // Double the green time if no vehicles in light2
+    greenTime2 = GREEN_TIME2 * 2 - DIFF3_MULT;
+    greenTime1 = GREEN_TIME2 * DIFF3_MULT; 
   } else if (diff == 1) {
     if (vehicleCount1 > vehicleCount2) {
-      greenTime1 = GREEN_TIME1 * 1.2;  // 20% longer
-      greenTime2 = GREEN_TIME2 * 0.8;  // 20% shorter
+      greenTime1 = GREEN_TIME1 * DIFF1_MULT;
+      greenTime2 = GREEN_TIME2 * 2.0 - DIFF1_MULT;
     } else {
-      greenTime1 = GREEN_TIME1 * 0.8;  // 20% shorter
-      greenTime2 = GREEN_TIME2 * 1.2;  // 20% longer
+      greenTime1 = GREEN_TIME1 * 2.0 - DIFF1_MULT;
+      greenTime2 = GREEN_TIME2 * DIFF1_MULT;
     }
   } else if (diff >= 2) {
     if (vehicleCount1 > vehicleCount2) {
-      greenTime1 = GREEN_TIME1 * 1.5;  // 50% longer
-      greenTime2 = GREEN_TIME2 * 0.5;  // 50% shorter
+      greenTime1 = GREEN_TIME1 * DIFF2_MULT;
+      greenTime2 = GREEN_TIME2 * 2 - DIFF2_MULT;
     } else {
-      greenTime1 = GREEN_TIME1 * 0.5;  // 50% shorter
-      greenTime2 = GREEN_TIME2 * 1.5;  // 50% longer
+      greenTime1 = GREEN_TIME1 * 2 - DIFF2_MULT;
+      greenTime2 = GREEN_TIME2 * DIFF2_MULT;
     }
   }
 
@@ -186,10 +208,8 @@ void updatePedestrianButtons(unsigned long currentMillis) {
   if (!pedestrianDebounce && (button1.wasPressed() || button2.wasPressed())) {
 
     if (currentState == GREEN1_RED2 || currentState == RED1_GREEN2)
-      stateDuration = 0;  // Transition to yellow immediately
+      stateDuration -= PEDESTRIAN_REDUCTION;
 
-    Serial.println(currentState);
-    Serial.println(stateDuration);
     button1.reset();
     button2.reset();
     pedestrianDebounce = true;
@@ -261,9 +281,76 @@ void updateTrafficLights(unsigned long currentMillis) {
   }
 }
 
+void sendJSON(unsigned long currentMillis) {
+  if (currentMillis - previousSerialMillis < SERIAL_UPDATE_INTERVAL) return;
+
+  previousSerialMillis = currentMillis;
+
+  if (currentState != lastState) {  // Check if the state has changed
+    lastState = currentState;       // Update the last state
+
+    StaticJsonDocument<2048> doc;
+    JsonObject data = doc.createNestedObject("data");
+    data["currentState"] = (currentState == GREEN1_RED2) ? "GREEN1RED2" : (currentState == YELLOW1_RED2) ? "YELLOW1RED2"
+                                                                       : (currentState == RED1_GREEN2)  ? "RED1GREEN2"
+                                                                       : (currentState == RED1_YELLOW2) ? "RED1YELLOW2"
+                                                                                                        : "BLINKING";
+    data["stateDuration"] = stateDuration;
+
+    JsonArray trafficLights = data.createNestedArray("trafficLights");
+
+    JsonObject light1Obj = trafficLights.createNestedObject();
+    light1Obj["trafficLightId"] = 1;
+    light1Obj["totalOfVehicles"] = light1.getVehicleCount();
+    light1Obj["isDaytime"] = !light1.isNight();
+    light1Obj["co2Level"] = co2Sensor.GetValue();
+
+    JsonObject light2Obj = trafficLights.createNestedObject();
+    light2Obj["trafficLightId"] = 2;
+    light2Obj["totalOfVehicles"] = light2.getVehicleCount();
+    light2Obj["isDaytime"] = !light2.isNight();
+    light2Obj["co2Level"] = 0;  // Assuming CO2 sensor is only for light1
+
+    JsonObject states = doc.createNestedObject("state");
+    states["GREEN_TIME1"] = GREEN_TIME1;
+    states["YELLOW_TIME1"] = YELLOW_TIME1;
+    states["RED_TIME1"] = RED_TIME1;
+    states["GREEN_TIME2"] = GREEN_TIME2;
+    states["YELLOW_TIME2"] = YELLOW_TIME2;
+    states["RED_TIME2"] = RED_TIME2;
+    states["BLINKING_DURATION"] = BLINKING_DURATION;
+
+    String output;
+    serializeJson(doc, output);
+    Serial.println(output);
+  }
+}
+
+void updateTimingFromGenAI() {
+  if (!Serial.available()) return;
+  String timingS = Serial.readString();
+  StaticJsonDocument<256> response;
+  deserializeJson(response, timingS);
+
+  GREEN_TIME1 = (int) response["states"]["GREEN_TIME1"];
+  YELLOW_TIME1 = (int) response["states"]["YELLOW_TIME1"];
+  RED_TIME1 = (int) response["states"]["RED_TIME1"];
+  GREEN_TIME2 = (int) response["states"]["GREEN_TIME2"];
+  YELLOW_TIME2 = (int) response["states"]["YELLOW_TIME2"];
+  RED_TIME2 = (int) response["states"]["RED_TIME2"];
+  BLINKING_DURATION = (int) response["states"]["BLINKING_DURATION"];
+
+  PEDESTRIAN_REDUCTION = (int) response["pedestrianReduction"];
+
+  DIFF1_MULT = (float) response["vehicleCount"]["diff1"];
+  DIFF2_MULT = (float) response["vehicleCount"]["diff2"];
+  DIFF3_MULT = (float) response["vehicleCount"]["diff3"];
+}
+
 void setup() {
   // Inicializa la máquina de estados
   currentState = GREEN1_RED2;
+  lastState = currentState;  // Inicializa el último estado
   previousMillis = millis();
   stateDuration = GREEN_TIME1;  // Initial green time for light 1
 
@@ -296,4 +383,8 @@ void loop() {
   updateTrafficLights(currentMillis);
 
   updateLCD(currentMillis);
+
+  sendJSON(currentMillis);
+
+  updateTimingFromGenAI();
 }

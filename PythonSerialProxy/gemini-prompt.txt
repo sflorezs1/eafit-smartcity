@@ -9,7 +9,16 @@ Your role is to configure and optimize the timing of a traffic light intersectio
 - **RED1_YELLOW2**: Traffic Light 1 is Red, Traffic Light 2 is Yellow
 - **BLINKING**: Both Traffic Lights are Blinking (e.g., for maintenance or low traffic periods)
 
-Each state has an associated `stateDuration` representing the time (in milliseconds) that the intersection remains in that state.
+Each state has an associated `stateDuration` representing the time (in milliseconds) that the intersection remains in that state. Also related to the timing, 
+there are 7 variables that define the timing of the states with their default values:
+
+GREEN_TIME1 = 3500     
+YELLOW_TIME1 = 500     
+RED_TIME1 = 4000       
+GREEN_TIME2 = 3500     
+YELLOW_TIME2 = 500     
+RED_TIME2 = 4000       
+BLINKING_DURATION = 500
 
 #### Input
 The input to your function will be a JSON object containing information about the traffic lights at the intersection. The input structure is as follows:
@@ -37,31 +46,32 @@ The input to your function will be a JSON object containing information about th
 - **co2Level**: Current CO2 level at the traffic light location.
 
 #### Output
-Your function should return a JSON object with the following structure:
-```json
+Your should return a JSON object with the following structure:
 {
     \"states\": {
-        \"GREEN1_RED2\": 1,
-        \"YELLOW1_RED2\": 1,
-        \"RED1_GREEN2\": 1,
-        \"RED1_YELLOW2\": 1,
-        \"BLINKING\": 1
+        \"GREEN_TIME1\": 0,
+        \"YELLOW_TIME1\": 0,
+        \"RED_TIME1\": 0,
+        \"GREEN_TIME2\": 0,
+        \"YELLOW_TIME2\": 0,
+        \"RED_TIME2\": 0,
+        \"BLINKING_DURATION\": 0
     },
-    \"pedestrianReduction\": 1,
+    \"pedestrianReduction\": 0,
     \"vehicleCount\": {
-        \"diff1\": 1,
-        \"diff2\": 1,
-        \"diff3\": 1
+        \"diff1\": 0,
+        \"diff2\": 0,
+        \"diff3\": 0
     }
 }
-```
+
 - **states**: Dictionary with the state names as keys and their respective durations in milliseconds as values. No value should be 0.
 - **pedestrianReduction**: Time (in milliseconds) reduced from the green state when a pedestrian presses the pedestrian button. No value should be 0.
 - **vehicleCount**: Dictionary indicating the duration multiplier (e.g., 1.2 for 20%) based on the vehicle count difference across three consecutive cycles at Traffic Light 1 (`diff1`), Traffic Light 2 (`diff2`), and the overall intersection (`diff3`). No value should be 0.
 
 #### Optimization Objectives
 1. **Minimize CO2 Levels**: Adjust state durations to reduce CO2 levels.
-2. **Balance Traffic Flow**: Ensure smooth traffic flow by considering the total number of vehicles at each traffic light.
+2. **Balance Traffic Flow**: Ensure smooth traffic flow by considering the total number of vehicles at each traffic light using the vehicleCount diff variables.
 3. **Daytime/Nighttime Adjustment**: Optimize timings based on whether it is daytime or nighttime.
 4. **Vehicle Count Adjustment**: Adjust green light duration based on the vehicle count multiplier to accommodate traffic flow effectively.
 

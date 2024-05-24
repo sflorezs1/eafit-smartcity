@@ -5,6 +5,9 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import google.generativeai as genai
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Configura el puerto serial y la velocidad de baudios (asegúrate de que coincida con el de Arduino)
 arduino_port = "/dev/ttyACM0"  # Reemplaza con el puerto serial de tu Arduino
@@ -17,7 +20,7 @@ firebase_admin.initialize_app(cred)
 # Obtén una referencia a la base de datos Firestore
 db = firestore.client()
 
-genai.configure(api_key="AIzaSyA-_fvufUq5vWBacsL9ydpc9ggiTnS8fjk")
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 generation_config = {
   "temperature": 1,
   "top_p": 0.95,
@@ -79,6 +82,7 @@ def read_arduino(ser):
                 data = json.loads(line)
                 return data
             except json.JSONDecodeError:
+                print(f"Failed to decode JSON: {line}")
                 return None
     except serial.SerialException:
         print("Device disconnected. Attempting to reconnect...")
@@ -86,27 +90,32 @@ def read_arduino(ser):
         ser = connect_serial()
     return None
 
-def send_ack():
-    ack_payload = {"ACK": True}
-    ack_json = json.dumps(ack_payload)
-    ser.write(ack_json.encode())
+def send_timings(timings: dict):
+    timings = json.dumps(timings)
+    print(f"Sending timings to Arduino: {timings.encode()}")
+    ser.write(timings.encode())
+    ser.flush()
 
 def save_to_firebase(data):
-    # Cambia "arduino_data" a la colección que quieras usar en Firestore
     doc_ref = db.collection("arduino_data").document()
-    doc_ref.set(data)
+    doc_ref.set(data["data"])
 
 try:
     ser = connect_serial()
     while True:
-        sensor_data = read_arduino(ser)
-        if sensor_data:
-            print(f"Received from Arduino: {sensor_data}")
-            # response = chat_session.send_message(json.dumps(sensor_data))
-            # print(response.text)
-            save_to_firebase(sensor_data)
-            # send_ack()
-        time.sleep(1)
+        try:
+            sensor_data = read_arduino(ser)
+            if sensor_data:
+                print(f"Received from Arduino: {sensor_data}")
+                response = chat_session.send_message(json.dumps(sensor_data)).text.replace("```json", "").replace("```", "")
+                save_to_firebase(sensor_data)
+                print(f"Response from Gemini: {response}")
+                send_timings(json.loads(response))
+            time.sleep(1)
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            time.sleep(1)
+            continue
 
 except KeyboardInterrupt:
     print("\nExiting program.")
