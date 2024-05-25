@@ -246,18 +246,18 @@ void updateLCD(unsigned long currentMillis) {
   byte sensor6 = is1l2.isVehiclePresent() ? 6 : 2;
 
   lcd.setCursor(14, 1);
-  lcd.write(sensor1);
+  lcd.write(sensor4);
   lcd.setCursor(14, 2);
-  lcd.write(sensor2);
+  lcd.write(sensor5);
   lcd.setCursor(14, 3);
-  lcd.write(sensor3);
+  lcd.write(sensor6);
 
   lcd.setCursor(15, 1);
-  lcd.write(sensor4);
+  lcd.write(sensor1);
   lcd.setCursor(15, 2);
-  lcd.write(sensor5);
+  lcd.write(sensor2);
   lcd.setCursor(15, 3);
-  lcd.write(sensor6);
+  lcd.write(sensor3);
 }
 
 void updateTimingWeights(unsigned long currentMillis) {
