@@ -12,9 +12,7 @@ Button::Button(int pin, unsigned long debounceDelay) {
 void Button::update() {
   bool reading = digitalRead(pin);
   if ((reading == HIGH) && ((millis() - lastDebounceTime) > debounceDelay)) {
-    Serial.print("Button changed: ");
     wasPressedInCycle = reading;
-    Serial.println(wasPressedInCycle);
     lastDebounceTime = millis();
   }
 }
