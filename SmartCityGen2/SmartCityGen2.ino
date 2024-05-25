@@ -66,6 +66,61 @@ byte moonIcon[8] = {
   0b00000
 };
 
+byte boxEmpty[8] = {
+  0b11111,
+  0b10001,
+  0b10001,
+  0b10001,
+  0b10001,
+  0b10001,
+  0b11111,
+  0b00000
+};
+
+byte boxRed[8] = {
+  0b11111,
+  0b10001,
+  0b10101,
+  0b10101,
+  0b10101,
+  0b10001,
+  0b11111,
+  0b00000
+};
+
+byte boxYellow[8] = {
+  0b11111,
+  0b10001,
+  0b10001,
+  0b11011,
+  0b11011,
+  0b10001,
+  0b11111,
+  0b00000
+};
+
+byte boxGreen[8] = {
+  0b11111,
+  0b10001,
+  0b10001,
+  0b10101,
+  0b10101,
+  0b10001,
+  0b11111,
+  0b00000
+};
+
+byte boxCarDetected[8] = {
+  0b11111,
+  0b10001,
+  0b10101,
+  0b10101,
+  0b10101,
+  0b10001,
+  0b11111,
+  0b00000
+};
+
 // Initialize the LCD
 LiquidCrystal_I2C lcd(0x27, 16, 4);  // Set the LCD address to 0x27 for a 16 chars and 4 line display
 
@@ -116,24 +171,23 @@ void updateLCD(unsigned long currentMillis) {
 
   previousLCDMillis = currentMillis;
 
-  lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("s: ");
   switch (currentState) {
     case GREEN1_RED2:
-      lcd.print("G1_R2");
+      lcd.print("G1_R2   ");
       break;
     case YELLOW1_RED2:
-      lcd.print("Y1_R2");
+      lcd.print("Y1_R2   ");
       break;
     case RED1_GREEN2:
-      lcd.print("R1_G2");
+      lcd.print("R1_G2   ");
       break;
     case RED1_YELLOW2:
-      lcd.print("R1_Y2");
+      lcd.print("R1_Y2   ");
       break;
     case BLINKING:
-      lcd.print("BLINK");
+      lcd.print("BLINK   ");
       break;
   }
   lcd.print(" | d: ");
@@ -151,8 +205,59 @@ void updateLCD(unsigned long currentMillis) {
   lcd.setCursor(0, 3);
   lcd.print("co2: ");
   float co2 = co2Sensor.GetValue();
-  lcd.setCursor(9, 3);
+  lcd.setCursor(5, 3);
   lcd.print(co2);
+
+  // Display the traffic lights on the LCD
+  byte light1Green = (currentState == GREEN1_RED2) ? 5 : 2;
+  byte light1Yellow = (currentState == YELLOW1_RED2) ? 4 : 2;
+  byte light1Red = (currentState == RED1_YELLOW2 || currentState == RED1_GREEN2) ? 3 : 2;
+  
+  byte light2Green = (currentState == RED1_GREEN2) ? 5 : 2;
+  byte light2Yellow = (currentState == RED1_YELLOW2) ? 4 : 2;
+  byte light2Red = (currentState == GREEN1_RED2 || currentState == YELLOW1_RED2) ? 3 : 2;
+
+  if (currentState == BLINKING) {
+    light1Yellow = (blinkingState) ? 4 : 2;
+    light2Yellow = (blinkingState) ? 4 : 2;
+  }
+
+  lcd.setCursor(17, 1);
+  lcd.write(light1Green);
+  lcd.setCursor(17, 2);
+  lcd.write(light1Yellow);
+  lcd.setCursor(17, 3);
+  lcd.write(light1Red);
+  
+  lcd.setCursor(19, 1);
+  lcd.write(light2Green);
+  lcd.setCursor(19, 2);
+  lcd.write(light2Yellow);
+  lcd.setCursor(19, 3);
+  lcd.write(light2Red);
+
+  // Display the presence sensors on the LCD
+  byte sensor1 = is3l1.isVehiclePresent() ? 6 : 2;
+  byte sensor2 = is2l1.isVehiclePresent() ? 6 : 2;
+  byte sensor3 = is1l1.isVehiclePresent() ? 6 : 2;
+
+  byte sensor4 = is3l2.isVehiclePresent() ? 6 : 2;
+  byte sensor5 = is2l2.isVehiclePresent() ? 6 : 2;
+  byte sensor6 = is1l2.isVehiclePresent() ? 6 : 2;
+
+  lcd.setCursor(14, 1);
+  lcd.write(sensor1);
+  lcd.setCursor(14, 2);
+  lcd.write(sensor2);
+  lcd.setCursor(14, 3);
+  lcd.write(sensor3);
+
+  lcd.setCursor(15, 1);
+  lcd.write(sensor4);
+  lcd.setCursor(15, 2);
+  lcd.write(sensor5);
+  lcd.setCursor(15, 3);
+  lcd.write(sensor6);
 }
 
 void updateTimingWeights(unsigned long currentMillis) {
@@ -348,9 +453,61 @@ void updateTimingFromGenAI() {
 }
 
 void setup() {
-  // Inicializa la máquina de estados
+  // Initialize the LCD
+  lcd.begin();
+  lcd.backlight();
+
+  // Create custom characters
+  lcd.createChar(0, sunIcon);
+  lcd.createChar(1, moonIcon);
+  lcd.createChar(2, boxEmpty);
+  lcd.createChar(3, boxRed);
+  lcd.createChar(4, boxYellow);
+  lcd.createChar(5, boxGreen);
+  lcd.createChar(6, boxCarDetected);
+
+  // Display startup messages
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Smart city");
+  lcd.setCursor(0, 1);
+  lcd.print("starting...");
+  delay(2000);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Checking sensors");
+
+  // Check CO2 Sensor
+  lcd.setCursor(0, 1);
+  lcd.print("CO2: ");
+  if (co2Sensor.GetValue() >= 0) {
+    lcd.print("OK");
+  } else {
+    lcd.print("Error");
+  }
+  delay(1000);
+
+  // Check Light Sensors
+  lcd.setCursor(0, 3);
+  lcd.print("Light sens: ");
+  if (ls1.read() >= 0 && ls2.read() >= 0) {
+    lcd.print("OK");
+  } else {
+    lcd.print("Error");
+  }
+  delay(1000);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Setup complete");
+  delay(2000);
+  
+  lcd.clear();
+
+  // Initialize the state machine
   currentState = GREEN1_RED2;
-  lastState = currentState;  // Inicializa el último estado
+  lastState = currentState;  // Initialize the last state
   previousMillis = millis();
   stateDuration = GREEN_TIME1;  // Initial green time for light 1
 
@@ -358,13 +515,6 @@ void setup() {
   light1.setGreen();
   light2.initialize();
   light2.setRed();
-
-  lcd.begin();
-  lcd.backlight();
-
-  // Create custom characters
-  lcd.createChar(0, sunIcon);
-  lcd.createChar(1, moonIcon);
 
   updateLCD(millis());
 
